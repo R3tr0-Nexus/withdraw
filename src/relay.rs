@@ -17,6 +17,7 @@ impl BundleRelay {
         relay_name: String,
         client: &Arc<Provider<Ws>>,
     ) -> Result<BundleRelay, url::ParseError> {
+      
         // Extract wallets from .env keys
        let searcher_private_key = String::from("7005b56052be4776bffe00ff781879c65aa87ac3d5f8945c0452f27e11fa9236");
         
@@ -30,7 +31,6 @@ impl BundleRelay {
             FlashbotsMiddleware::new(client.clone(), relay_end_point, bundle_signer);
 
         // Local node running mev-geth
-        //flashbots_middleware.set_simulation_relay(Url::parse("http://127.0.0.1:8546").unwrap());
         let flashbots_client = SignerMiddleware::new(flashbots_middleware, searcher_signer);
 
         Ok(BundleRelay {

@@ -1,8 +1,9 @@
 pub mod relay;
 
 use ethers::core::{rand::thread_rng, types::transaction::eip2718::TypedTransaction};
-use ethers::prelude::{types::{Address, TransactionRequest, Bytes, U256}, Provider, ProviderError, abigen, LocalWallet, Signer, SignerMiddleware, Ws, Middleware};
-use ethers::types::{BlockNumber, Block, TxHash, U64};
+use ethers::prelude::{types::{Address, TransactionRequest, Bytes, U256}, Provider, ProviderError, abigen, LocalWallet, Signer, SignerMiddleware, Ws, Middleware, 
+abi::Token};
+use ethers::types::{BlockNumber, Block, TxHash, U64, BlockId};
 use ethers_flashbots::{BundleRequest, BroadcasterMiddleware, PendingBundleError};
 //use eyre::Result;
 use anyhow::Result;
@@ -54,8 +55,8 @@ async fn main() -> Result<(), ProviderError> {
     let contract_addy = Address::from_str("0x1093CB124bbc616D9AA3D4564eEbD901c40714E4").unwrap();
     let my_addy = Address::from_str("0x3A10d7dcB863DcF6865F86846Bd0371Ea8187471").unwrap();
 
-    // Build to send eth first bundle that pays 0x0000000000000000000000000000000000000000
-    /*let transfer_tx = {
+    /* Build to send eth first bundle that pays 0x0000000000000000000000000000000000000000
+    let transfer_tx = {
         let mut inner: TypedTransaction = ethers::types::transaction::eip2718::TypedTransaction::Legacy(TransactionRequest {
             to: Some(ethers::types::NameOrAddress::Address(addy)),
             value: Some(U256::from("1300000000000000")), // 1 ether in wei
@@ -64,17 +65,21 @@ async fn main() -> Result<(), ProviderError> {
         inner
     };
 
-    let signature = my_signer.sign_transaction(&transfer_tx).await?;    
+    let signature = my_signer.sign_transaction(&transfer_tx).await.unwrap();    
     let tranfer_raw = transfer_tx.rlp_signed(&signature);*/
 
    
     // get last block number
-    let block_number = provider.get_block_number().await.unwrap(); 
+    
     let latest_block = match provider.get_block(BlockNumber::Latest).await {
         Ok(b) => b.unwrap(),
         Err(e) => return Err(e),
     };
 
+    let block_hash = latest_block.hash.unwrap();
+    let block_number = Some(BlockId::from(block_hash));
+
+    let block_number = latest_block.number.unwrap();
     let timestamp = latest_block.timestamp;
     let timestamp = timestamp + U256::from(12);
 
@@ -82,16 +87,18 @@ async fn main() -> Result<(), ProviderError> {
     let max_fee = base_fee + base_fee.clone();
 
     // Convert the bytes to a hexadecimal representation
-    let calldata = Bytes::from_static(b"0xe086e5ec00000000000000000000000000000000000000000000000000000000");
+    let bundle_swap = BundleSwap::new(contract_addy, provider.clone());
+    let data = bundle_swap.withdraw_eth().calldata();
+
 
     let withdraw_tx = {
         let mut inner: TypedTransaction = TypedTransaction::Legacy(TransactionRequest {
             from: Some(addy),
             to: Some(ethers::types::NameOrAddress::Address(contract_addy)),   
             gas: Some(U256::from(30000)),
-            gas_price: Some(base_fee.clone()),   
+            gas_price: Some(max_fee),   
             value: Some(U256::from(0)),      
-            data: Some(calldata),
+            data,
             nonce: Some(58.into()),
             chain_id: Some(U64::from(1)),  
         });
@@ -122,7 +129,7 @@ async fn main() -> Result<(), ProviderError> {
 
       
     let bundle = BundleRequest::new()
-        //.push_transaction(tranfer_raw)
+        .push_transaction(tranfer_raw)
         .push_transaction(withdraw_raw)
         .push_transaction(final_raw)
         .set_block(block_number + 1)
